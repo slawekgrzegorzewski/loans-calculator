@@ -3,6 +3,8 @@ package pl.sg.loans.calculator;
 import pl.sg.loans.model.LoanCalculationInstallment;
 import pl.sg.loans.model.LoanCalculationParams;
 import pl.sg.loans.overpayment.LoanOverpaymentStrategyFactory;
+import pl.sg.loans.utils.RateStrategy;
+import pl.sg.loans.utils.RepaymentDayStrategy;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -13,8 +15,6 @@ import static java.math.BigDecimal.ZERO;
 import static java.math.RoundingMode.HALF_DOWN;
 
 public class LoanSimulator {
-    private static final BigDecimal HUNDRED = new BigDecimal("100");
-
     private final LoanOverpaymentStrategyFactory loanOverpaymentStrategyFactory;
     private final LoanInstalmentCalculator loanInstalmentCalculator;
     private final int lessPreciseScale;
@@ -31,19 +31,25 @@ public class LoanSimulator {
         this.morePreciseScale = morePreciseScale;
     }
 
-    public List<LoanCalculationInstallment> simulate(LoanCalculationParams loanCalculationParams) {
+    public List<LoanCalculationInstallment> simulate(
+            LoanCalculationParams loanCalculationParams,
+            RateStrategy rateStrategy,
+            RepaymentDayStrategy repaymentDayStrategy) {
+
         List<LoanCalculationInstallment> installments = new ArrayList<>();
         BigDecimal leftToRepay = loanCalculationParams.loanAmount();
-        BigDecimal annualRate = loanCalculationParams.wibor().add(loanCalculationParams.rate()).divide(HUNDRED, morePreciseScale, HALF_DOWN);
+        BigDecimal annualRate = rateStrategy.getNextInstallmentRate();
 
         BigDecimal installmentAmount = loanInstalmentCalculator.calculateInstallmentAmount(leftToRepay, annualRate, loanCalculationParams.numberOfInstallments(), loanCalculationParams.repaymentStart());
 
         while (leftToRepay.compareTo(ZERO) > 0) {
-            LocalDate installmentStartDate = installments.isEmpty()
-                    ? loanCalculationParams.repaymentStart()
-                    : installments.get(installments.size() - 1).paymentTo().plusDays(1);
+            LocalDate lastInstallmentPaidAt = installments.isEmpty()
+                    ? loanCalculationParams.repaymentStart().minusDays(1)
+                    : installments.getLast().paymentTo();
 
-            LocalDate installmentEndDate = installmentStartDate.plusMonths(1).withDayOfMonth(1);
+            LocalDate installmentStartDate = lastInstallmentPaidAt.plusDays(1);
+
+            LocalDate installmentEndDate = repaymentDayStrategy.getNextPaymentDay(lastInstallmentPaidAt);
 
             if (installmentAmount.compareTo(ZERO) == 0) {
                 installmentAmount = loanInstalmentCalculator.calculateInstallmentAmount(leftToRepay, annualRate, loanCalculationParams.numberOfInstallments() - installments.size(), installmentStartDate);
@@ -85,10 +91,11 @@ public class LoanSimulator {
             }
         }
         if (leftToRepay.compareTo(ZERO) > 0) {
-            LocalDate installmentStartDate = installments.isEmpty()
-                    ? loanCalculationParams.repaymentStart()
-                    : installments.get(installments.size() - 1).paymentTo().plusDays(1);
-            LocalDate installmentEndDate = installmentStartDate.plusMonths(1).minusDays(1);
+            LocalDate lastInstallmentPaidAt = installments.isEmpty()
+                    ? loanCalculationParams.repaymentStart().minusDays(1)
+                    : installments.getLast().paymentTo();
+            LocalDate installmentStartDate = lastInstallmentPaidAt.plusDays(1);
+            LocalDate installmentEndDate = repaymentDayStrategy.getNextPaymentDay(lastInstallmentPaidAt);
 
             BigDecimal interestToPay = loanInstalmentCalculator.calculateInterest(leftToRepay, annualRate, installmentStartDate, installmentEndDate);
 
