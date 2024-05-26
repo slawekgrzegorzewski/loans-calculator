@@ -70,8 +70,8 @@ public class LoanSimulator {
                             installmentEndDate,
                             leftToRepay.setScale(lessPreciseScale, HALF_DOWN),
                             installmentAmount.setScale(lessPreciseScale, HALF_DOWN),
-                            interestToPay.setScale(lessPreciseScale, HALF_DOWN),
                             repaidCapital.setScale(lessPreciseScale, HALF_DOWN),
+                            interestToPay.setScale(lessPreciseScale, HALF_DOWN),
                             overpayment
                     )
             );
